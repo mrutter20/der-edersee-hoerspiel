@@ -72,37 +72,37 @@ jobs:
           end += len(end_marker)
 
           new = r'''        val rows = script.text.toString().lines()
-        val parsed = mutableListOf<Pair<String, String>>()
-        var currentRole: String? = null
-        val currentText = StringBuilder()
+                  val parsed = mutableListOf<Pair<String, String>>()
+                  var currentRole: String? = null
+                  val currentText = StringBuilder()
 
-        fun flushCurrent() {
-            val role = currentRole
-            val text = currentText.toString().trim()
-            if (role != null && text.isNotBlank()) parsed.add(role to text)
-            currentText.clear()
-        }
+                  fun flushCurrent() {
+                      val role = currentRole
+                      val text = currentText.toString().trim()
+                      if (role != null && text.isNotBlank()) parsed.add(role to text)
+                      currentText.clear()
+                  }
 
-        for (rawRow in rows) {
-            val row = rawRow.trim()
-            if (row.isBlank()) continue
-            val match = Regex("^(ERZÄHLER|MARTIN|ANDREA)\\s*:\\s*(.*)$", RegexOption.IGNORE_CASE).matchEntire(row)
-            if (match != null) {
-                flushCurrent()
-                currentRole = match.groupValues[1].uppercase(Locale.ROOT)
-                val inlineText = match.groupValues[2].trim()
-                if (inlineText.isNotBlank()) currentText.append(inlineText)
-            } else {
-                if (currentRole == null) {
-                    fail("Der Text muss mit ERZÄHLER:, MARTIN: oder ANDREA: beginnen.")
-                    return
-                }
-                if (currentText.isNotEmpty()) currentText.append("\\n")
-                currentText.append(row)
-            }
-        }
-        flushCurrent()
-        if (parsed.isEmpty()) { fail("Füge zuerst die Geschichte ein."); return }'''
+                  for (rawRow in rows) {
+                      val row = rawRow.trim()
+                      if (row.isBlank()) continue
+                      val match = Regex("^(ERZÄHLER|MARTIN|ANDREA)\\s*:\\s*(.*)$", RegexOption.IGNORE_CASE).matchEntire(row)
+                      if (match != null) {
+                          flushCurrent()
+                          currentRole = match.groupValues[1].uppercase(Locale.ROOT)
+                          val inlineText = match.groupValues[2].trim()
+                          if (inlineText.isNotBlank()) currentText.append(inlineText)
+                      } else {
+                          if (currentRole == null) {
+                              fail("Der Text muss mit ERZÄHLER:, MARTIN: oder ANDREA: beginnen.")
+                              return
+                          }
+                          if (currentText.isNotEmpty()) currentText.append("\n")
+                          currentText.append(row)
+                      }
+                  }
+                  flushCurrent()
+                  if (parsed.isEmpty()) { fail("Füge zuerst die Geschichte ein."); return }'''
 
           s = s[:start] + new + s[end:]
           p.write_text(s, encoding="utf-8")
