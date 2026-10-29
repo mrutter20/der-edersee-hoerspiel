@@ -1,0 +1,40 @@
+
+name: Inspect Android Source
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Extract and inspect source
+        shell: bash
+        run: |
+          set -e
+          ZIP_FILE=$(find . -maxdepth 1 -type f -iname "*.zip" -print -quit)
+          if [ -z "$ZIP_FILE" ]; then
+            echo "FEHLER: Keine ZIP-Datei gefunden."
+            exit 1
+          fi
+
+          mkdir -p /tmp/edersee-source
+          unzip -q "$ZIP_FILE" -d /tmp/edersee-source
+
+          echo "=== ANDROID QUELLDATEIEN ==="
+          find /tmp/edersee-source -type f \
+            \( -name "*.kt" -o -name "*.java" \) -print
+
+          echo "=== SPRECHER UND TEXTVERARBEITUNG ==="
+          grep -RniE -C 5 \
+            'TextToSpeech|speak\(|ERZÄHLER|ANDREA|MARTIN|split\(|speaker|sprecher' \
+            /tmp/edersee-source \
+            --include="*.kt" --include="*.java" \
+            || true
+            
