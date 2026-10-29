@@ -12,10 +12,9 @@ contents: read
 jobs:
 build:
 runs-on: ubuntu-latest
-
 steps:
-  - name: Checkout repository
-    uses: actions/checkout@v4
+- name: Checkout repository
+uses: actions/checkout@v4
 
   - name: Set up Java
     uses: actions/setup-java@v4
@@ -23,28 +22,24 @@ steps:
       distribution: temurin
       java-version: '17'
 
-  - name: Find and extract Android project
+  - name: Extract Android project
     run: |
       ZIP_FILE=$(find . -maxdepth 1 -type f -iname "*.zip" -print -quit)
       if [ -z "$ZIP_FILE" ]; then
-        echo "Keine ZIP-Datei im Repository gefunden."
+        echo "Keine ZIP-Datei gefunden."
         exit 1
       fi
       mkdir -p extracted
       unzip -q "$ZIP_FILE" -d extracted
-      PROJECT_DIR=$(dirname "$(find extracted -name settings.gradle.kts -print -quit)")
-      if [ -z "$PROJECT_DIR" ] || [ "$PROJECT_DIR" = "extracted" ]; then
-        echo "Keine settings.gradle.kts im ZIP gefunden."
+      PROJECT_FILE=$(find extracted -name settings.gradle.kts -print -quit)
+      if [ -z "$PROJECT_FILE" ]; then
+        echo "Keine settings.gradle.kts gefunden."
         exit 1
       fi
-      echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
-      echo "Android-Projekt gefunden: $PROJECT_DIR"
+      echo "PROJECT_DIR=$(dirname "$PROJECT_FILE")" >> "$GITHUB_ENV"
 
   - name: Set up Android SDK
     uses: android-actions/setup-android@v3
-
-  - name: Accept Android SDK licenses
-    run: yes | sdkmanager --licenses || true
 
   - name: Build debug APK
     run: |
