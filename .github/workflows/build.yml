@@ -48,7 +48,7 @@ jobs:
           fi
           echo "PROJECT_DIR=$(dirname "$PROJECT_FILE")" >> "$GITHUB_ENV"
 
-      - name: Fix speaker script parser
+      - name: Fix speaker parser and split long texts
         run: |
           python3 - <<'PY'
           from pathlib import Path
@@ -78,8 +78,17 @@ jobs:
 
                   fun flushCurrent() {
                       val role = currentRole
-                      val text = currentText.toString().trim()
-                      if (role != null && text.isNotBlank()) parsed.add(role to text)
+                      val fullText = currentText.toString().trim()
+                      if (role != null && fullText.isNotBlank()) {
+                          var remaining = fullText
+                          while (remaining.length > 2500) {
+                              var splitAt = remaining.lastIndexOf(' ', 2500)
+                              if (splitAt < 1) splitAt = 2500
+                              parsed.add(role to remaining.substring(0, splitAt).trim())
+                              remaining = remaining.substring(splitAt).trim()
+                          }
+                          if (remaining.isNotBlank()) parsed.add(role to remaining)
+                      }
                       currentText.clear()
                   }
 
@@ -106,7 +115,7 @@ jobs:
 
           s = s[:start] + new + s[end:]
           p.write_text(s, encoding="utf-8")
-          print(f"Sprecher-Parser korrigiert: {p}")
+          print(f"Sprecher-Parser korrigiert und lange Texte geteilt: {p}")
           PY
 
       - name: Align Java and Kotlin targets
@@ -133,12 +142,14 @@ jobs:
               )
 
           if "kotlinOptions" not in s:
-              marker = "android {"
-              block = """android {
+              s = s.replace(
+                  "android {",
+                  """android {
               kotlinOptions {
                   jvmTarget = "17"
-              }"""
-              s = s.replace(marker, block, 1)
+              }""",
+                  1
+              )
 
           p.write_text(s)
           print(f"Build-Einstellungen angepasst: {p}")
