@@ -47,7 +47,7 @@ jobs:
           fi
           echo "PROJECT_DIR=$(dirname "$PROJECT_FILE")" >> "$GITHUB_ENV"
 
-      - name: Fix speaker parser and voice selection
+      - name: Fix speaker parser
         run: |
           python3 - <<'PY'
           from pathlib import Path
@@ -121,19 +121,8 @@ jobs:
 
           s = s[:start] + new + s[end:]
 
-          params_marker = '        params.putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, 1.0f)'
-          if params_marker not in s:
-              raise SystemExit("Sprachparameter nicht gefunden. Es wurde nichts geändert.")
-
-          voice_param = '''        params.putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, 1.0f)
-                  pendingVoice?.let {
-                      params.putString(TextToSpeech.Engine.KEY_PARAM_VOICE_NAME, it.name)
-                  }'''
-
-          s = s.replace(params_marker, voice_param, 1)
-
           p.write_text(s, encoding="utf-8")
-          print("Sprecherparser und Stimmparameter angepasst.")
+          print("Sprecherparser angepasst.")
           PY
 
       - name: Align Java and Kotlin targets
