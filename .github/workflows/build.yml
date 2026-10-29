@@ -1,3 +1,4 @@
+
 name: Build Android APK
 
 on:
@@ -46,6 +47,17 @@ jobs:
             exit 1
           fi
           echo "PROJECT_DIR=$(dirname "$PROJECT_FILE")" >> "$GITHUB_ENV"
+
+      - name: Show current TTS implementation
+        run: |
+          FILE=$(find extracted -name MainActivity.kt -print -quit)
+          if [ -z "$FILE" ]; then
+            echo "MainActivity.kt wurde nicht gefunden"
+            exit 1
+          fi
+          echo "=== MAINACTIVITY START ==="
+          cat "$FILE"
+          echo "=== MAINACTIVITY END ==="
 
       - name: Fix speaker parser
         run: |
@@ -120,7 +132,6 @@ jobs:
                   if (parsed.isEmpty()) { fail("Füge zuerst die Geschichte ein."); return }'''
 
           s = s[:start] + new + s[end:]
-
           p.write_text(s, encoding="utf-8")
           print("Sprecherparser angepasst.")
           PY
@@ -173,3 +184,4 @@ jobs:
           name: Der-Edersee-debug-apk
           path: extracted/**/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
+ 
