@@ -1,168 +1,190 @@
-
 name: Build Android APK
 
 on:
-  workflow_dispatch:
-  push:
-    branches:
-      - main
+workflow_dispatch:
+push:
+branches:
+- main
 
 permissions:
-  contents: read
+contents: read
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
-    env:
-      ANDROID_HOME: /usr/local/lib/android/sdk
+build:
+runs-on: ubuntu-latest
+env:
+ANDROID_HOME: /usr/local/lib/android/sdk
 
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+steps:
+  - name: Checkout repository
+    uses: actions/checkout@v4
 
-      - name: Set up Java
-        uses: actions/setup-java@v5
-        with:
-          distribution: temurin
-          java-version: '17'
+  - name: Set up Java
+    uses: actions/setup-java@v5
+    with:
+      distribution: temurin
+      java-version: '17'
 
-      - name: Prepare Android SDK
-        run: |
-          echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
-          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses
-          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+  - name: Prepare Android SDK
+    run: |
+      echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
+      yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses
+      "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platform-tools" "platforms;android-35" "build-tools;35.0.0"
 
-      - name: Extract Android project
-        run: |
-          ZIP_FILE=$(find . -maxdepth 1 -type f -iname "*.zip" -print -quit)
-          if [ -z "$ZIP_FILE" ]; then
-            echo "Keine ZIP-Datei gefunden."
-            exit 1
-          fi
-          mkdir -p extracted
-          unzip -q "$ZIP_FILE" -d extracted
-          PROJECT_FILE=$(find extracted -name settings.gradle.kts -print -quit)
-          if [ -z "$PROJECT_FILE" ]; then
-            echo "Keine settings.gradle.kts gefunden."
-            exit 1
-          fi
-          echo "PROJECT_DIR=$(dirname "$PROJECT_FILE")" >> "$GITHUB_ENV"
+  - name: Extract Android project
+    run: |
+      ZIP_FILE=$(find . -maxdepth 1 -type f -iname "*.zip" -print -quit)
+      if [ -z "$ZIP_FILE" ]; then
+        echo "Keine ZIP-Datei gefunden."
+        exit 1
+      fi
+      mkdir -p extracted
+      unzip -q "$ZIP_FILE" -d extracted
+      PROJECT_FILE=$(find extracted -name settings.gradle.kts -print -quit)
+      if [ -z "$PROJECT_FILE" ]; then
+        echo "Keine settings.gradle.kts gefunden."
+        exit 1
+      fi
+      echo "PROJECT_DIR=$(dirname "$PROJECT_FILE")" >> "$GITHUB_ENV"
 
-      - name: Fix speaker parser and split long texts
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
+  - name: Fix speaker parsing and voice selection
+    run: |
+      python3 - <<'PY'
+      from pathlib import Path
 
-          files = list(Path("extracted").glob("**/app/src/main/java/de/edersee/hoerspiel/MainActivity.kt"))
-          if not files:
-              raise SystemExit("MainActivity.kt wurde nicht gefunden")
+      files = list(Path("extracted").glob("**/app/src/main/java/de/edersee/hoerspiel/MainActivity.kt"))
+      if not files:
+          raise SystemExit("MainActivity.kt wurde nicht gefunden")
 
-          p = files[0]
-          s = p.read_text(encoding="utf-8")
+      p = files[0]
+      s = p.read_text(encoding="utf-8")
 
-          start_marker = '        val rows = script.text.toString().lines().map { it.trim() }.filter { it.isNotBlank() }'
-          end_marker = '        if (parsed.isEmpty()) { fail("Füge zuerst die Geschichte ein."); return }'
+      start_marker = '        val rows = script.text.toString().lines().map { it.trim() }.filter { it.isNotBlank() }'
+      end_marker = '        if (parsed.isEmpty()) { fail("Füge zuerst die Geschichte ein."); return }'
 
-          start = s.find(start_marker)
-          end = s.find(end_marker, start)
+      start = s.find(start_marker)
+      end = s.find(end_marker, start)
 
-          if start < 0 or end < 0:
-              raise SystemExit("Parserblock nicht gefunden. Es wurde nichts geändert.")
+      if start < 0 or end < 0:
+          raise SystemExit("Parserblock nicht gefunden. Es wurde nichts geändert.")
 
-          end += len(end_marker)
+      end += len(end_marker)
 
-          new = r'''        val rows = script.text.toString().lines()
-                  val parsed = mutableListOf<Pair<String, String>>()
-                  var currentRole: String? = null
-                  val currentText = StringBuilder()
+      new = r'''        val rows = script.text.toString().lines()
+              val parsed = mutableListOf<Pair<String, String>>()
+              var currentRole: String? = null
+              val currentText = StringBuilder()
 
-                  fun flushCurrent() {
-                      val role = currentRole
-                      val fullText = currentText.toString().trim()
-                      if (role != null && fullText.isNotBlank()) {
-                          var remaining = fullText
-                          while (remaining.length > 2500) {
-                              var splitAt = remaining.lastIndexOf(' ', 2500)
-                              if (splitAt < 1) splitAt = 2500
-                              parsed.add(role to remaining.substring(0, splitAt).trim())
-                              remaining = remaining.substring(splitAt).trim()
-                          }
-                          if (remaining.isNotBlank()) parsed.add(role to remaining)
+              fun flushCurrent() {
+                  val role = currentRole
+                  val fullText = currentText.toString().trim()
+                  if (role != null && fullText.isNotBlank()) {
+                      var remaining = fullText
+                      while (remaining.length > 2500) {
+                          var splitAt = remaining.lastIndexOf(' ', 2500)
+                          if (splitAt < 1) splitAt = 2500
+                          parsed.add(role to remaining.substring(0, splitAt).trim())
+                          remaining = remaining.substring(splitAt).trim()
                       }
-                      currentText.clear()
+                      if (remaining.isNotBlank()) parsed.add(role to remaining)
                   }
+                  currentText.clear()
+              }
 
-                  for (rawRow in rows) {
-                      val row = rawRow.trim()
-                      if (row.isBlank()) continue
-                      val match = Regex("^(ERZÄHLER|MARTIN|ANDREA)\\s*:\\s*(.*)$", RegexOption.IGNORE_CASE).matchEntire(row)
-                      if (match != null) {
-                          flushCurrent()
-                          currentRole = match.groupValues[1].uppercase(Locale.ROOT)
-                          val inlineText = match.groupValues[2].trim()
-                          if (inlineText.isNotBlank()) currentText.append(inlineText)
-                      } else {
-                          if (currentRole == null) {
-                              fail("Der Text muss mit ERZÄHLER:, MARTIN: oder ANDREA: beginnen.")
-                              return
-                          }
-                          if (currentText.isNotEmpty()) currentText.append("\n")
-                          currentText.append(row)
-                      }
-                  }
-                  flushCurrent()
-                  if (parsed.isEmpty()) { fail("Füge zuerst die Geschichte ein."); return }'''
-
-          s = s[:start] + new + s[end:]
-          p.write_text(s, encoding="utf-8")
-          print(f"Sprecher-Parser korrigiert und lange Texte geteilt: {p}")
-          PY
-
-      - name: Align Java and Kotlin targets
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-
-          files = list(Path("extracted").glob("**/app/build.gradle.kts"))
-          if not files:
-              raise SystemExit("app/build.gradle.kts wurde nicht gefunden")
-
-          p = files[0]
-          s = p.read_text()
-
-          if "compileOptions" not in s:
-              s = s.replace(
-                  "android {",
-                  """android {
-              compileOptions {
-                  sourceCompatibility = JavaVersion.VERSION_17
-                  targetCompatibility = JavaVersion.VERSION_17
-              }""",
-                  1
+              val rolePattern = Regex(
+                  "^(ERZÄHLER|MARTIN|ANDREA)\\s*:\\s*(.*)$",
+                  RegexOption.IGNORE_CASE
               )
 
-          if "kotlinOptions" not in s:
-              s = s.replace(
-                  "android {",
-                  """android {
-              kotlinOptions {
-                  jvmTarget = "17"
-              }""",
-                  1
-              )
+              for (rawRow in rows) {
+                  val row = rawRow.trim()
+                  if (row.isBlank()) continue
 
-          p.write_text(s)
-          print(f"Build-Einstellungen angepasst: {p}")
-          PY
+                  val match = rolePattern.matchEntire(row)
+                  if (match != null) {
+                      flushCurrent()
+                      currentRole = match.groupValues[1].uppercase(Locale.ROOT)
+                      val spokenText = match.groupValues[2].trim()
+                      if (spokenText.isNotBlank()) currentText.append(spokenText)
+                  } else {
+                      if (currentRole == null) {
+                          fail("Jeder Sprecherabschnitt muss mit ERZÄHLER:, MARTIN: oder ANDREA: beginnen.")
+                          return
+                      }
+                      if (currentText.isNotEmpty()) currentText.append("\n")
+                      currentText.append(row)
+                  }
+              }
 
-      - name: Build debug APK
-        run: |
-          cd "$PROJECT_DIR"
-          gradle assembleDebug
+              flushCurrent()
+              if (parsed.isEmpty()) { fail("Füge zuerst die Geschichte ein."); return }'''
 
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: Der-Edersee-debug-apk
-          path: extracted/**/app/build/outputs/apk/debug/app-debug.apk
-          if-no-files-found: error
+      s = s[:start] + new + s[end:]
+
+      voice_marker = '        pendingVoice?.let { tts.voice = it }'
+      if voice_marker not in s:
+          raise SystemExit("Stimmenzuweisung nicht gefunden. Es wurde nichts geändert.")
+
+      params_marker = '        params.putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, 1.0f)'
+      if params_marker not in s:
+          raise SystemExit("Sprachparameter nicht gefunden. Es wurde nichts geändert.")
+
+      voice_param = '''        params.putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, 1.0f)
+              pendingVoice?.let {
+                  params.putString(TextToSpeech.Engine.KEY_PARAM_VOICE_NAME, it.name)
+              }'''
+
+      s = s.replace(params_marker, voice_param, 1)
+
+      p.write_text(s, encoding="utf-8")
+      print("Sprecherabschnitte und Stimmparameter angepasst.")
+      PY
+
+  - name: Align Java and Kotlin targets
+    run: |
+      python3 - <<'PY'
+      from pathlib import Path
+
+      files = list(Path("extracted").glob("**/app/build.gradle.kts"))
+      if not files:
+          raise SystemExit("app/build.gradle.kts wurde nicht gefunden")
+
+      p = files[0]
+      s = p.read_text()
+
+      if "compileOptions" not in s:
+          s = s.replace(
+              "android {",
+              """android {
+          compileOptions {
+              sourceCompatibility = JavaVersion.VERSION_17
+              targetCompatibility = JavaVersion.VERSION_17
+          }""",
+              1
+          )
+
+      if "kotlinOptions" not in s:
+          s = s.replace(
+              "android {",
+              """android {
+          kotlinOptions {
+              jvmTarget = "17"
+          }""",
+              1
+          )
+
+      p.write_text(s)
+      print("Build-Einstellungen angepasst.")
+      PY
+
+  - name: Build debug APK
+    run: |
+      cd "$PROJECT_DIR"
+      gradle assembleDebug
+
+  - name: Upload APK
+    uses: actions/upload-artifact@v4
+    with:
+      name: Der-Edersee-debug-apk
+      path: extracted/**/app/build/outputs/apk/debug/app-debug.apk
+      if-no-files-found: error
